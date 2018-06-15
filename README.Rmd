@@ -15,20 +15,43 @@ library(leaflet)
 ```
 # naturalearth_3571_tiles
 
-The goal of naturalearth_3571_tiles is to provide tile maps for use within
+The goal of naturalearth_3571 is to document creation of tile maps for use within
 the `leaflet` package that are projected in WGS 84 / North Pole LAEA Bering 
 Sea (EPSG:3571). The tiles are derived from the Natural Earth II dataset.
 
-The initial command line calls to `gdal` are
+The starting raster is downloaded from the [Natural Earth website](https://www.naturalearthdata.com/downloads/10m-raster-data/10m-natural-earth-2/). We are going to download the 1:10m resolution file with shaded relief,
+water, and drainages. And, we will download the largest file size version.
+
+The initial command line calls to `gdal` are provided below. The initial call
+to `gdal_translate` simply establishes the source projection and creates a copy
+that we call `ne.tif`. The next `gdalwarp` is where we specify to just include
+the northern hempisphere. I would like to trim this even further to just focus
+on the North Pacific. However, any attempts to provide a smaller region have
+failed to create a proper tif in the next step. The last `gdalwarp` call is 
+where we actually re-project into the target EPSG:3571. Note the specification
+of `-r lanczos` so we get a high quality resampling (this takes longer) and
+also the `-wo SOURCE_EXTRA=1000` which prevents the presence of tearing at the
+180 line (although, there is still a bit present, so maybe this should be 1500?)
 
 ```{bash, eval=FALSE}
 gdal_translate -a_srs "+proj=longlat +ellps=sphere" NE2_HR_LC_SR_W_DR.tif ne.tif
 gdalwarp -te -180 0 180 90 ne.tif ne_crop.tif
 gdalwarp -dstnodata 0 -ot Byte -wo SOURCE_EXTRA=1000 -t_srs "EPSG:3571" \
 -r lanczos -of GTiff  ne_crop.tif naturalearth_3571.tif
+```
+
+The next step is to call `gdal2tiles.py`. In my case, this is found within my
+Anaconda managed python install. It is important to pass `--profile=raster` so
+the projection is maintained. I specified `-z 3-8` because there's likely no need
+to zoom out higher (or in closer) for this dataset.
+
+```{bash, eval=FALSE}
 ~/anaconda3/bin/gdal2tiles.py --profile=raster -z 3-8 \
 naturalearth_3571.tif naturalearth_3571
 ```
+
+Our tiles are now found within the `naturalearth_3571` folder and we will set
+this as part of our `tile_url` variable for `leaflet`
 
 ```{r tile-url}
 tile_url <- "naturalearth_3571/{z}/{x}/{y}.png"
@@ -83,5 +106,5 @@ devtools::install_github("leonawicz/tiler", ref = "projections")
 library(tiler)
 map <- "naturalearth_3571.tif"
 tile_dir <- "tiles"
-tile(map, tile_dir, "3-7", profile = "raster")
+tile(map, tile_dir, "3-8", profile = "raster")
 ```
